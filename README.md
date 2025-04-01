@@ -22,7 +22,7 @@ This tool allows you to extract content from EPUB files and convert it to speech
 1. Clone the repository or download the source files:
 
 ```bash
-git clone https://github.com/yourusername/epub-to-speech.git
+git clone https://github.com/cbremseth/epub-to-speech.git
 cd epub-to-speech
 ```
 

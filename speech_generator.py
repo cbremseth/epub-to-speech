@@ -4,6 +4,11 @@ import time
 from openai import OpenAI
 import markdown
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def convert_markdown_to_speech(markdown_file, output_dir, voice='alloy'):

@@ -3,11 +3,13 @@ import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
 import re
+from markdownify import markdownify as md
 
 
 def extract_epub_to_markdown(epub_path, output_file):
     """
     Process an EPUB file, extract content and headers, and save as markdown.
+    Removes formatting elements like bold, italics, code blocks, figures, and tables.
 
     Args:
         epub_path: Path to the EPUB file
@@ -18,7 +20,7 @@ def extract_epub_to_markdown(epub_path, output_file):
     """
     try:
         # Read the EPUB file
-        book = epub.read_epub(epub_path)
+        book = epub.read_epub(epub_path, {"ignore_ncx": True})
 
         # Get book metadata
         title = book.get_metadata('DC', 'title')
@@ -39,37 +41,48 @@ def extract_epub_to_markdown(epub_path, output_file):
                 # Get content as bytes and decode to string
                 html_content = item.get_content().decode('utf-8')
 
-                # Parse HTML
+                # Parse HTML with BeautifulSoup
                 soup = BeautifulSoup(html_content, 'html.parser')
 
-                # Extract chapter title if available
+                # Remove unwanted elements
+                for element in soup(['script', 'style', 'table', 'figure', 'figcaption', 'code', 'pre']):
+                    element.decompose()
+
+                # Remove formatting tags but keep their content
+                for tag in soup.find_all(['strong', 'b', 'em', 'i', 'code']):
+                    tag.replace_with(tag.get_text())
+
+                # Extract chapter title if available before converting to markdown
                 chapter_title = soup.find(['h1', 'h2'])
                 if chapter_title:
                     markdown_content.append(
                         f"\n## {chapter_title.get_text().strip()}\n")
 
-                # Process all headings and paragraphs
-                for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p']):
-                    tag_name = element.name
-                    text = element.get_text().strip()
+                # Convert the HTML to markdown using markdownify library
+                # Configure markdownify to skip certain conversions
+                markdown_section = md(
+                    str(soup),
+                    heading_style="ATX",
+                    strip=['a', 'img', 'code', 'pre',
+                           'table', 'tr', 'td', 'th', 'blockquote']
+                )
 
-                    # Skip empty elements
-                    if not text:
-                        continue
+                # Ensure proper spacing between sections
+                markdown_content.append(f"\n{markdown_section}\n\n")
 
-                    # Format headings with appropriate markdown
-                    if tag_name.startswith('h'):
-                        level = int(tag_name[1])
-                        # Ensure headings are properly nested
-                        markdown_content.append(
-                            f"\n{'#' * (level + 1)} {text}\n")
-                    else:
-                        # Regular paragraph
-                        markdown_content.append(f"{text}\n\n")
+        # Clean up excessive newlines and spaces
+        final_content = re.sub(r'\n{3,}', '\n\n', ''.join(markdown_content))
 
-        # Join all content and write to file
+        # Remove any remaining markdown formatting for bold and italic
+        final_content = re.sub(r'\*\*|\*|__|\^|_', '', final_content)
+
+        # Remove any remaining code blocks
+        final_content = re.sub(
+            r'```.*?```', '', final_content, flags=re.DOTALL)
+
+        # Write to file
         with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(''.join(markdown_content))
+            f.write(final_content)
 
         return output_file
 
@@ -79,30 +92,28 @@ def extract_epub_to_markdown(epub_path, output_file):
 
 def clean_html(html_content):
     """
-    Clean HTML content and extract only useful text.
+    Clean HTML content and extract only basic text without formatting.
 
     Args:
         html_content: HTML content as string
 
     Returns:
-        str: Cleaned text
+        str: Cleaned text without formatting
     """
     soup = BeautifulSoup(html_content, 'html.parser')
 
-    # Remove script and style elements
-    for script in soup(["script", "style"]):
-        script.extract()
+    # Remove unwanted elements
+    for element in soup(['script', 'style', 'table', 'figure', 'figcaption', 'code', 'pre', 'blockquote']):
+        element.decompose()
 
-    # Get text
+    # Remove formatting tags but keep their content
+    for tag in soup.find_all(['strong', 'b', 'em', 'i', 'code']):
+        tag.replace_with(tag.get_text())
+
+    # Get just the text
     text = soup.get_text()
 
-    # Break into lines and remove leading and trailing space on each
-    lines = (line.strip() for line in text.splitlines())
-
-    # Break multi-headlines into a line each
-    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-
-    # Drop blank lines
-    text = '\n'.join(chunk for chunk in chunks if chunk)
+    # Clean up whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
 
     return text
